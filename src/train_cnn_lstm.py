@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 import imagetransforms
 from imgaug import augmenters as iaa
 import daves_augment
-
+import torch.nn as nn
 import loggy
 
 logger = loggy.setup_custom_logger('root', "train_cnn_lstm.py")
@@ -49,12 +49,14 @@ def test_on_val(val_dataloader, model, criterion):
             input_tensor = input_tensor.cuda()
 
             model_output, model_output_actual_lengths = model(input_tensor, input_widths)
-            loss = criterion(model_output, target, model_output_actual_lengths, target_widths)
+            #loss = criterion(model_output, target, model_output_actual_lengths, target_widths)
+            log_probs = torch.nn.functional.log_softmax(model_output.view(-1, model_output.size(2)), dim=1).view(model_output.size(0), model_output.size(1),-1)
+            loss = criterion(log_probs, target, model_output_actual_lengths, target_widths)
 
             hyp_transcriptions = model.decode_without_lm(model_output, model_output_actual_lengths, uxxxx=True)
 
             batch_size = input_tensor.size(0)
-            curr_loss = loss.data[0] / batch_size
+            curr_loss = loss.data / batch_size
             n_samples += 1
             loss_running_avg += (curr_loss - loss_running_avg) / n_samples
 
@@ -149,7 +151,7 @@ def train(batch, model, criterion, optimizer):
 
     # Okay, now we're ready to update parameters!
     optimizer.step()
-    return loss.data[0]
+    return loss.data
 
 
 def get_args():
