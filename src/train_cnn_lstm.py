@@ -9,7 +9,7 @@ import loggy
 
 logger = loggy.setup_custom_logger('root', "train_cnn_lstm.py")
 
-from warpctc_pytorch import CTCLoss
+#from warpctc_pytorch import CTCLoss
 import matplotlib
 
 matplotlib.use('Agg')
@@ -46,7 +46,7 @@ def test_on_val(val_dataloader, model, criterion):
     # No need for backprop during validation test
     with torch.no_grad():
         for input_tensor, target, input_widths, target_widths, metadata in val_dataloader:
-            input_tensor = input_tensor.cuda(async=True)
+            input_tensor = input_tensor.cuda()
 
             model_output, model_output_actual_lengths = model(input_tensor, input_widths)
             loss = criterion(model_output, target, model_output_actual_lengths, target_widths)
@@ -110,7 +110,7 @@ def test_on_val_writeout(val_dataloader, model, out_hyp_path):
     # No need for backprop during validation test
     with torch.no_grad(), open(out_hyp_path, 'w') as fh_out:
         for input_tensor, target, input_widths, target_widths, metadata in val_dataloader:
-            input_tensor = input_tensor.cuda(async=True)
+            input_tensor = input_tensor.cuda()
 
             model_output, model_output_actual_lengths = model(input_tensor, input_widths)
             hyp_transcriptions = model.decode_without_lm(model_output, model_output_actual_lengths, uxxxx=False)
@@ -130,12 +130,14 @@ def test_on_val_writeout(val_dataloader, model, out_hyp_path):
 
 def train(batch, model, criterion, optimizer):
     input_tensor, target, input_widths, target_widths, metadata = batch
-    input_tensor = input_tensor.cuda(async=True)
+    input_tensor = input_tensor.cuda()
 
     optimizer.zero_grad()
     model_output, model_output_actual_lengths = model(input_tensor, input_widths)
 
-    loss = criterion(model_output, target, model_output_actual_lengths, target_widths)
+    #loss = criterion(model_output, target, model_output_actual_lengths, target_widths)
+    log_probs = torch.nn.functional.log_softmax(model_output.view(-1, model_output.size(2)), dim=1).view(model_output.size(0), model_output.size(1),-1)
+    loss = criterion(log_probs, target, model_output_actual_lengths, target_widths)
     loss.backward()
     
     # RNN Backprop can have exploding gradients (even with LSTM), so make sure
@@ -355,8 +357,8 @@ def main():
     # Set training mode on all sub-modules
     model.train()
 
-    ctc_loss = CTCLoss().cuda()
-
+    #ctc_loss = CTCLoss().cuda()
+    ctc_loss = nn.CTCLoss(reduction='sum').cuda()
     iteration = 0
     best_val_wer = float('inf')
 

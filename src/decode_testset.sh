@@ -20,8 +20,8 @@ fi
 
 mkdir -p ${OUTDIR}
 
-SCLITE=sclite
-script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+SCLITE=/export/b04/aarora8/kaldi.synth/tools/sctk/bin/sclite
+script_dir=/export/b04/aarora8/kaldi.synth/egs/yomdle_tamil/v1/local/yomdle/normalized_scoring
 
 # Run Decoding
 python3 ${script_dir}/decode_testset.py --datadir=${datadir} --model-path=${model_path} --lm-path=${lmpath} --outdir=${OUTDIR}
