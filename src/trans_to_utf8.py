@@ -1,0 +1,34 @@
+import sys
+import textutils
+
+
+input_file = sys.argv[1]
+
+with open(input_file, 'r') as fh:
+
+    for line in fh:
+        lparen_location = line.rfind('(')
+        rparen_location = line.rfind(')')
+
+        utt = line[ :lparen_location]
+        utt_utf8 = ''
+        for word in utt.split(" "):
+            if word == "u0020":
+                utt_utf8 += "<sp> "
+            elif word == "u0009":
+                utt_utf8 += "<tb> "
+            else:
+                word_utf8 = ''
+                for char in word.split("_"):
+                    if char == "u0009":
+                        char_utf8 = "<tb>"
+                    else:
+                        char_utf8 = textutils.uxxxx_to_utf8(char)
+                    word_utf8 += char_utf8
+
+                utt_utf8 += word_utf8 + " "
+
+        uttid = line[ lparen_location+1 : rparen_location ]
+
+        print("%s (%s)" % (utt_utf8, uttid))
+

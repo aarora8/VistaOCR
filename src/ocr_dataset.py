@@ -14,8 +14,8 @@ from alphabet import Alphabet
 
 
 class OcrDataset(Dataset):
-    def __init__(self, data_dir, split, transforms, alphabet=None, preloaded_lmdb=None, max_allowed_width=1200):
-        logger.info("Loading OCR Dataset: [%s] split from [%s]." % (split, data_dir))
+    def __init__(self, data_dir, split, transforms, alphabet=None, max_allowed_width=999):
+        logger.info("Loading OCR Dataset: [%s] split from [%s] max width [%d]" % (split, data_dir, max_allowed_width))
 
         self.max_allowed_width = max_allowed_width
 
@@ -36,11 +36,7 @@ class OcrDataset(Dataset):
             self.init_alphabet()
 
         # Read LMDB image database
-        if preloaded_lmdb:
-            self.lmdb_env = preloaded_lmdb
-        else:
-            self.lmdb_env = lmdb.Environment(os.path.join(data_dir, 'line-images.lmdb'), map_size=1e12, readonly=True, lock=False)
-
+        self.lmdb_env = lmdb.Environment(os.path.join(data_dir, 'line-images.lmdb'), map_size=1e6, readonly=True, lock=False)
         self.lmdb_txn = self.lmdb_env.begin(buffers=True)
 
         # Divide dataset into classes by width of images images for two purposes:
@@ -76,21 +72,27 @@ class OcrDataset(Dataset):
                 if not entry['writer'] in self.writer_id_map:
                     self.writer_id_map[entry['writer']] = len(self.writer_id_map)
 
-            # Now figure out which size-group it belongs in
-            for cur_limit in self.size_group_limits:
-                if ('height' in entry) and ('width' in entry):
-                    width_orig, height_orig = entry['width'], entry['height']
-                    normalized_height = 30
-                    normalized_width = width_orig * (normalized_height / height_orig)
-                elif 'width' in entry:
-                    normalized_width = entry['width']
-                else:
-                    raise Exception("Json entry must list width & height of image.")
-
-                if normalized_width < cur_limit and normalized_width < self.max_allowed_width:
-                    self.size_groups[cur_limit].append(idx)
-                    self.size_groups_dict[cur_limit][idx] = 1
-                    break
+            image_id = entry['id']
+            image_uxxxx_trans = entry['trans']
+            image_width_orig, image_height_orig = entry['width'], entry['height']
+            if image_width_orig > 2:
+                # Now figure out which size-group it belongs in
+                for cur_limit in self.size_group_limits:
+                    if ('height' in entry) and ('width' in entry):
+                        width_orig, height_orig = entry['width'], entry['height']
+                        normalized_height = 30
+                        normalized_width = width_orig * (normalized_height / height_orig)
+                    elif 'width' in entry:
+                        normalized_width = entry['width']
+                    else:
+                        raise Exception("Json entry must list width & height of image.")
+    
+                    if normalized_width < cur_limit and normalized_width < self.max_allowed_width:
+                        self.size_groups[cur_limit].append(idx)
+                        self.size_groups_dict[cur_limit][idx] = 1
+                        break
+            else:
+                print('...BAD IMAGE WIDTH, SKIPPING id %s, trans %s, width %d, height %d' % (image_id,image_uxxxx_trans,image_width_orig,image_height_orig ))
 
 
         # Now get final size (might have dropped large entries!)

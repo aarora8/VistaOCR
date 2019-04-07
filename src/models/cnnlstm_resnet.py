@@ -11,6 +11,9 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.init as init
+import torch.nn.functional as F
+from torch.autograd import Variable
 
 from textutils import uxxxx_to_utf8
 
@@ -32,6 +35,88 @@ def log_add(logx, logy):
 
     return logx + np.log(1.0 + np.exp(negdiff))
 
+
+def conv3x3(in_planes, out_planes, stride=1):
+    """3x3 convolution with padding"""
+    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
+                     padding=1, bias=False)
+
+
+def conv1x1(in_planes, out_planes, stride=1):
+    """1x1 convolution"""
+    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
+
+
+class BasicBlock(nn.Module):
+    expansion = 1
+
+    def __init__(self, inplanes, planes, stride=1, downsample=None):
+        super(BasicBlock, self).__init__()
+        self.conv1 = conv3x3(inplanes, planes, stride)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv2 = conv3x3(planes, planes)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.downsample = downsample
+        self.stride = stride
+
+    def forward(self, x):
+        identity = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+
+        if self.downsample is not None:
+            identity = self.downsample(x)
+
+        out += identity
+        out = self.relu(out)
+
+        return out
+
+
+class Bottleneck(nn.Module):
+    expansion = 4
+
+    def __init__(self, inplanes, planes, stride=1, downsample=None):
+        super(Bottleneck, self).__init__()
+        self.conv1 = conv1x1(inplanes, planes)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = conv3x3(planes, planes, stride)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.conv3 = conv1x1(planes, planes * self.expansion)
+        self.bn3 = nn.BatchNorm2d(planes * self.expansion)
+        self.relu = nn.ReLU(inplace=True)
+        self.downsample = downsample
+        self.stride = stride
+
+    def forward(self, x):
+        identity = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = self.relu(out)
+
+        out = self.conv3(out)
+        out = self.bn3(out)
+
+        if self.downsample is not None:
+            identity = self.downsample(x)
+
+        out += identity
+        out = self.relu(out)
+
+        return out
+
+    
 
 class CnnOcrModel(nn.Module):
     def get_hyper_params(self):
@@ -72,7 +157,7 @@ class CnnOcrModel(nn.Module):
     def __init__(self, *args, **kwargs):
         super(CnnOcrModel, self).__init__()
 
-        #print('init')
+        print('init')
         if len(args) > 0:
             raise Exception("Only keyword arguments allowed in CnnOcrModel")
 
@@ -121,30 +206,107 @@ class CnnOcrModel(nn.Module):
             last_num_filters = 16
 
         print('CNN input last_num_filters %d' % (last_num_filters))
-        self.cnn = nn.Sequential(
-            *self.ConvBNReLU(last_num_filters, 64),
-            *self.ConvBNReLU(64, 64),
-            nn.FractionalMaxPool2d(2, output_ratio=(0.5, 0.7)),
-            *self.ConvBNReLU(64, 128),
-            *self.ConvBNReLU(128, 128),
-            nn.FractionalMaxPool2d(2, output_ratio=(0.5, 0.7)),
-            *self.ConvBNReLU(128, 256),
-            *self.ConvBNReLU(256, 256),
-            *self.ConvBNReLU(256, 256)
-        )
+#         self.cnn = nn.Sequential(
+#             *self.ConvBNReLU(last_num_filters, 64),
+#             *self.ConvBNReLU(64, 64),
+#             nn.FractionalMaxPool2d(2, output_ratio=(0.5, 0.7)),
+#             *self.ConvBNReLU(64, 128),
+#             *self.ConvBNReLU(128, 128),
+#             nn.FractionalMaxPool2d(2, output_ratio=(0.5, 0.7)),
+#             *self.ConvBNReLU(128, 256),
+#             *self.ConvBNReLU(256, 256),
+#             *self.ConvBNReLU(256, 256)
+#         )
 
+
+#         self.in_planes = int(16)
+#         #depth = int(28)
+#         depth = int(10)
+#         #depth = int(16)
+#         widen_factor = int(10) 
+#         dropout_rate = 0.3
+#         
+#         assert ((depth-4)%6 ==0), 'Wide-resnet depth should be 6n+4'
+#         n = int((depth-4)/6)
+#         k = widen_factor
+# 
+#         print('| Wide-Resnet %dx%d' %(depth, k))
+#         nStages = [16, 16*k, 32*k, 64*k]
+# 
+#         print('...Stages', nStages)
+#         print('...depth %d' % (depth))
+#         print('...widen_factor %d' % (widen_factor))
+#         print('...dropout_rate %f' % (dropout_rate))
+#
+#         self.cnn = nn.Sequential(
+#             conv3x3(3,nStages[0]),
+#             self._wide_layer(wide_basic, nStages[1], n, dropout_rate, stride=1),
+#             self._wide_layer(wide_basic, nStages[2], n, dropout_rate, stride=2),
+#             self._wide_layer(wide_basic, nStages[3], n, dropout_rate, stride=2),
+#             nn.BatchNorm2d(nStages[3], momentum=0.9)
+#         )
+ 
+
+        block = BasicBlock
+        layers  = [2, 2, 2, 2]
+        zero_init_residual=False
+        self.inplanes = 64
+
+#         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3,bias=False)
+#         self.bn1 = nn.BatchNorm2d(64)
+#         self.relu = nn.ReLU(inplace=True)
+#         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+#         self.layer1 = self._make_layer(block, 64, layers[0])
+#         self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
+#         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
+#         self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
+                
+        self.cnn = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1), #, padding=3,bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            #nn.MaxPool2d(kernel_size=3, stride=1, padding=1),
+            nn.FractionalMaxPool2d(2, output_ratio=(0.7, 0.7)),
+            self._make_layer(block, 64, layers[0]),
+            nn.FractionalMaxPool2d(2, output_ratio=(0.7, 0.7)),
+            self._make_layer(block, 128, layers[1], stride=1),
+            nn.FractionalMaxPool2d(2, output_ratio=(0.7, 0.7)),
+            self._make_layer(block, 256, layers[2], stride=1),
+            nn.FractionalMaxPool2d(2, output_ratio=(0.7, 0.7)),
+            self._make_layer(block, 512, layers[3], stride=1)
+        )
+        #self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        #self.fc = nn.Linear(512 * block.expansion, num_classes)
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+        # Zero-initialize the last BN in each residual branch,
+        # so that the residual branch starts with zeros, and each residual block behaves like an identity.
+        # This improves the model by 0.2~0.3% according to https://arxiv.org/abs/1706.02677
+        if zero_init_residual:
+            for m in self.modules():
+                if isinstance(m, Bottleneck):
+                    nn.init.constant_(m.bn3.weight, 0)
+                elif isinstance(m, BasicBlock):
+                    nn.init.constant_(m.bn2.weight, 0)
+                            
+        
         # We need to calculate cnn output size to construct the bridge layer
-        fake_input_width = 135
-        print('Fake input width %d' % (fake_input_width))
+        fake_input_width = 500
         cnn_out_h, cnn_out_w = self.cnn_input_size_to_output_size((self.input_line_height, fake_input_width))
         print('CNN out height %d, width %d' % (cnn_out_h, cnn_out_w))
         cnn_out_c = self.cnn_output_num_channels()
 
+        #cnn_out_h = 4
         cnn_feat_size = cnn_out_c * cnn_out_h
 
-        print('CNN out height %d' % (cnn_out_h))
         print('CNN out channels %d' % (cnn_out_c))
-        print('CNN feature size (channels %d x height %d) = %d' % (cnn_out_c, cnn_out_h, cnn_feat_size))
+        print('CNN feature size %d' % (cnn_feat_size))
 
 
         self.bridge_layer = nn.Sequential(
@@ -215,7 +377,23 @@ class CnnOcrModel(nn.Module):
             logger.info("Warning: Runnig model on CPU")
 
 
-        
+    def _make_layer(self, block, planes, blocks, stride=1):
+        downsample = None
+        if stride != 1 or self.inplanes != planes * block.expansion:
+            downsample = nn.Sequential(
+                conv1x1(self.inplanes, planes * block.expansion, stride),
+                nn.BatchNorm2d(planes * block.expansion),
+            )
+
+        layers = []
+        layers.append(block(self.inplanes, planes, stride, downsample))
+        self.inplanes = planes * block.expansion
+        for _ in range(1, blocks):
+            layers.append(block(self.inplanes, planes))
+
+        return nn.Sequential(*layers)
+    
+
     def cnn_output_num_channels(self):
         out_c = 0
         for module in self.cnn.modules():
@@ -226,6 +404,7 @@ class CnnOcrModel(nn.Module):
 
     def calculate_hw(self, module, out_h, out_w):
         if isinstance(module, nn.Conv2d) or isinstance(module, nn.MaxPool2d):
+            
             if isinstance(module.padding, tuple):
                 padding_y, padding_x = module.padding
             else:
@@ -245,6 +424,7 @@ class CnnOcrModel(nn.Module):
 
             out_h = math.floor((out_h + 2.0 * padding_y - dilation_y * (kernel_size_y - 1) - 1) / stride_y + 1)
             out_w = math.floor((out_w + 2.0 * padding_x - dilation_x * (kernel_size_x - 1) - 1) / stride_x + 1)
+            
         elif isinstance(module, nn.FractionalMaxPool2d):
             if module.output_size is not None:
                 out_h, out_w = module.output_size
@@ -268,11 +448,18 @@ class CnnOcrModel(nn.Module):
 
 
         # First do rapid downsampling
-        for module in self.rapid_ds.modules():
-            out_h, out_w = self.calculate_hw(module, out_h, out_w)
+        #for module in self.rapid_ds.modules():
+        #    out_h, out_w = self.calculate_hw(module, out_h, out_w)
+        #print('----start cnn_input_size_to_output_size')
         for module in self.cnn.modules():
+            #print(module.__class__.__name__, out_h, out_w)
             out_h, out_w = self.calculate_hw(module, out_h, out_w)
-
+        #print('END')
+        
+        #out_h = math.floor(out_h * 0.7 * 0.7 * 0.7 - 1)
+        out_h = 6
+        #out_w = math.floor(out_w * 0.8 * 0.8 * 0.8)
+        
         return (out_h, out_w)
 
     # Consider: nn.Dropout2d
@@ -282,50 +469,60 @@ class CnnOcrModel(nn.Module):
                 nn.ReLU(inplace=True)]
 
     def forward(self, x, actual_minibatch_widths, summary_flag=False):
-        #print('...Forward')
-        #print('forward input ', x.size())
+        #print('--->Forward CnnOcrModel')
+
+        #print('x ', x.size())
         rapid_ds_output = self.rapid_ds(x)
         #print('rapid_ds_output', rapid_ds_output.size())
         cnn_output = self.cnn(rapid_ds_output)
-        #print('forward cnn_output', cnn_output.size())
-
-        # output is like:  bchw
-        # want to turn it into: wb[ch]
+        cnn_output = F.relu(cnn_output)
+        
+        #cnn_output = F.avg_pool2d(out, 8)
+        #out = out.view(out.size(0), -1)
+        
+#         out = self.conv1(rapid_ds_output)
+#         out = self.layer1(out)
+#         out = self.layer2(out)
+#         out = self.layer3(out)
+#         cnn_output = F.relu(self.bn1(out))
+        #cnn_output = F.avg_pool2d(out, 8)
+        #cnn_output = out.view(out.size(0), -1)
+        
+        
         b, c, h, w = cnn_output.size()
         #print('output size b %d, c %d, h %d, w %d' % (b, c, h, w))
         cnn_output = cnn_output.permute(3, 0, 1, 2).contiguous()
 
-        #if summary_flag == True:
-        #    return cnn_output
-        
-        lstm_input = self.bridge_layer(cnn_output.view(-1, c * h)).view(w, b, -1)
-        #print('forward lstm_input', lstm_input.size())
-
         if summary_flag == True:
-            return lstm_input
+            return cnn_output
+ 
+ 
+        lstm_input = self.bridge_layer(cnn_output.view(-1, c * h)).view(w, b, -1)
+        #print('lstm input shape', lstm_input.size())
+
+        #if summary_flag == True:
+        #    return lstm_input
 
         # Try tensor.unfold(0, frame_size, step_size), e.g. with frame_size=2, step_size=1
-
+ 
         # Note: pack_padded_sequence assumes that minibatch elements are sorted by length
         #       i.e. minibatch_widths[0] is longest sequence and minibatch_widths[-1] is shortest sequence
         #       We assume that the data loader arranged input to conform to this constraint
+ 
+        
         actual_cnn_output_widths = [self.cnn_input_size_to_output_size((self.input_line_height, width))[1] for width in
-                                    actual_minibatch_widths.data]
-
+                                        actual_minibatch_widths.data]
+        #print('...actual_cnn_output_widths', actual_cnn_output_widths)
+ 
         packed_lstm_input = rnn_pack(lstm_input, actual_cnn_output_widths)
         packed_lstm_output, _ = self.lstm(packed_lstm_input)
         lstm_output, lstm_output_lengths = rnn_unpack(packed_lstm_output)
-        #print('forward lstm_output', lstm_output.size())
-
+ 
         w = lstm_output.size(0)
-
+ 
         prob_output = self.prob_layer(lstm_output.view(-1, lstm_output.size(2))).view(w, b, -1)
-        #print('forward prob_output', prob_output.size())
-        #print('')
 
-        #if summary_flag == True:
-        #    return cnn_output
-
+ 
         return prob_output, lstm_output_lengths.to(torch.int32)
         #return lstm_output, lstm_output_lengths.to(torch.int32)
 

@@ -1,51 +1,7 @@
 import math
 import sys
-import icu_bidi
-import unicodedata
 
 import numpy as np
-
-
-# R=strong right-to-left;  AL=strong arabic right-to-left
-rtl_set =  set(chr(i) for i in range(sys.maxunicode)
-               if unicodedata.bidirectional(chr(i)) in ['R','AL'])
-
-def determine_text_direction(text):
-    # Easy case first
-    for char in text:
-        if char in rtl_set:
-            return icu_bidi.UBiDiLevel.UBIDI_RTL
-    # If we made it here we did not encounter any strongly rtl char
-    return icu_bidi.UBiDiLevel.UBIDI_LTR
-
-def utf8_visual_to_logical(text):
-    text_dir = determine_text_direction(text)
-
-    bidi = icu_bidi.Bidi()
-    bidi.inverse = True
-    bidi.reordering_mode = icu_bidi.UBiDiReorderingMode.UBIDI_REORDER_INVERSE_LIKE_DIRECT
-    bidi.reordering_options = icu_bidi.UBiDiReorderingOption.UBIDI_OPTION_DEFAULT # icu_bidi.UBiDiReorderingOption.UBIDI_OPTION_INSERT_MARKS
-
-    bidi.set_para(text, text_dir, None)
-
-    res = bidi.get_reordered(0 | icu_bidi.UBidiWriteReorderedOpt.UBIDI_DO_MIRRORING | icu_bidi.UBidiWriteReorderedOpt.UBIDI_KEEP_BASE_COMBINING)
-
-    return res
-
-def utf8_logical_to_visual(text):
-    text_dir = determine_text_direction(text)
-
-    bidi = icu_bidi.Bidi()
-
-    bidi.reordering_mode = icu_bidi.UBiDiReorderingMode.UBIDI_REORDER_DEFAULT
-    bidi.reordering_options = icu_bidi.UBiDiReorderingOption.UBIDI_OPTION_DEFAULT  #icu_bidi.UBiDiReorderingOption.UBIDI_OPTION_INSERT_MARKS
-
-    bidi.set_para(text, text_dir, None)
-
-    res = bidi.get_reordered(0 | icu_bidi.UBidiWriteReorderedOpt.UBIDI_DO_MIRRORING | icu_bidi.UBidiWriteReorderedOpt.UBIDI_KEEP_BASE_COMBINING)
-
-    return res
-
 
 
 def uxxxx_to_utf8(in_str):
@@ -62,7 +18,6 @@ def uxxxx_to_utf8(in_str):
             cur_utf8_char = uxxxx
         else:
             # First get the 'xxxx' part out of the current 'uxxxx' char
-
             cur_char = uxxxx[1:]
 
             # Now decode the hex code point into utf-8
@@ -183,21 +138,10 @@ def compute_cer_wer(hyp_transcription, ref_transcription):
 
     word_dist = edit_distance(hyp_words, ref_words)
 
-    if len(ref_chars) == 0 or len(ref_words) == 0:
-        return None, None
-    else:
-        return float(char_dist) / len(ref_chars), float(word_dist) / len(ref_words)
+    return float(char_dist) / len(ref_chars), float(word_dist) / len(ref_words)
 
 
 def form_target_transcription(target, alphabet):
-#     trans_list = []
-#     for i in target:
-#         if i in alphabet.idx_to_char:
-#             trans_list.append(alphabet.idx_to_char[i])
-#         else:
-#             #print('...validation char %s missing from train model ' % (i))
-#             trans_list.append(alphabet.idx_to_char[1])
-#     return ' '.join(trans_list)                              
     return ' '.join([alphabet.idx_to_char[i] for i in target])
 
 

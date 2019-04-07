@@ -15,19 +15,14 @@ from alphabet import Alphabet
 from ocr_dataset import OcrDataset
 
 class OcrDatasetUnion(Dataset):
-    def __init__(self, data_dir_list, split, transforms, alphabet=None):
-        logger.info("Loading OCR Dataset Union: [%s] split from [%s]." % (split, data_dir_list))
+    def __init__(self, data_dir_list, split, transforms, alphabet=None, max_allowed_width=999):
+        logger.info("Loading OCR Dataset Union: [%s] split from [%s], max width [%d]" % (split, data_dir_list, max_allowed_width))
 
         self.datasets = []
         self.nentries = 0
-
-        self.lmdb_cache = dict()
         for data_dir in data_dir_list:
-            if data_dir in self.lmdb_cache:
-                dataset = OcrDataset(data_dir, split, transforms, alphabet, preloaded_lmdb=self.lmdb_cache[data_dir])
-            else:
-                dataset = OcrDataset(data_dir, split, transforms, alphabet)
-                self.lmdb_cache[data_dir] = dataset.lmdb_env
+            print('...load %s' % (data_dir))
+            dataset = OcrDataset(data_dir, split, transforms, alphabet, max_allowed_width=max_allowed_width)
             self.datasets.append(dataset)
             self.nentries += len(dataset)
 

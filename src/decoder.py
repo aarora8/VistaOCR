@@ -9,9 +9,6 @@ from textutils import uxxxx_to_utf8
 
 
 class LmDecoder:
-    # max active 3k - 7k
-    # beam: 11 - 17
-    # lattice_beam 6-9
     def __init__(self, alphabet, lm_file, word_sym_file, lm_units, acoustic_weight=0.8, max_active=5000, beam=16.0, lattice_beam=10.0):
         self.alphabet = alphabet
 
@@ -25,7 +22,7 @@ class LmDecoder:
         self.lattice_decoder = eesen.LatticeDecoder(lm_file, word_sym_file, self.acoustic_weight, max_active, beam,
                                                     lattice_beam)
 
-        #self.lattice_decoder.EnableLattices("/home/hltcoe/srawls/tmp.lat.gz")
+        self.lattice_decoder.EnableLattices("/home/hltcoe/srawls/tmp.ark")
 
         # Need to keep track of model-alphabet to LM-alphabet conversion
         units = ['<ctc-blank>']
@@ -100,26 +97,28 @@ class LmDecoder:
             probs_remapped = np.full( (batch_actual_timesteps[b], len(self.lmidx_to_char)), np.log(1e-10))
             probs_remapped[:,self.lm_swap_idxs_lmidx] = probs[:batch_actual_timesteps[b], b, self.lm_swap_idxs_modelidx]
 
-            # Just for right-to-left languages!
-            #probs_remapped = probs_remapped[::-1]
-
             decoder_futures[b] = tp_executor.submit(decode_helper, probs_remapped, uttids[b], uxxxx)
 
         # At this point all decoder tasks are done (we are outside scope of with ThreadPoolExecutor, so it has finished)
+
         return decoder_futures
+
+#        hyp_results = []
+#
+#        for b in range(B):
+#            res = decoder_futures[b].result()
+#            hyp_results.append(res)
+#
+#        return hyp_results
 
 
 class ArgmaxDecoder:
     def __init__(self, alphabet):
         self.alphabet = alphabet
 
-    def decode(self, model_output, batch_actual_timesteps, uxxxx=False, lang=None):
+    def decode(self, model_output, batch_actual_timesteps, uxxxx=False):
         start_decode = datetime.now()
-
-        if lang is None:
-            min_prob_thresh = 3 * 1 / len(self.alphabet)
-        else:
-            min_prob_thresh = 3 * 1 / len(self.alphabet[lang])
+        min_prob_thresh = 3 * 1 / len(self.alphabet)
 
         T = model_output.size()[0]
         B = model_output.size()[1]
@@ -158,10 +157,7 @@ class ArgmaxDecoder:
                     continue
 
 
-                if lang is None:
-                    char = self.alphabet.idx_to_char[argmax_idxs[b]]
-                else:
-                    char = self.alphabet[lang].idx_to_char[argmax_idxs[b]]
+                char = self.alphabet.idx_to_char[argmax_idxs[b]]
 
                 if prev_char[b] == char:
                     continue

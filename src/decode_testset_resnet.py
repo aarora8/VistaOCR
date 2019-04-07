@@ -3,7 +3,7 @@ import argparse
 #import datetime
 import time
 import torch
-from models.cnnlstm import CnnOcrModel
+from models.cnnlstm_resnet import CnnOcrModel
 from torch.autograd import Variable
 import imagetransforms
 

@@ -10,7 +10,6 @@ import loggy
 
 logger = loggy.setup_custom_logger('root', "train_cnn_lstm.py")
 
-from warpctc_pytorch import CTCLoss
 import matplotlib
 import time
 matplotlib.use('Agg')
@@ -66,8 +65,11 @@ def test_on_val(val_dataloader, model, criterion):
 
             batch_size = input_tensor.size(0)
             total_val_images += batch_size
-            curr_loss = loss.data[0] / batch_size
-            #curr_loss = loss.item() / batch_size
+            
+            ''' CTC CHANGE '''
+            #curr_loss = loss.data[0] / batch_size
+            curr_loss = loss.item() / batch_size
+            
             n_samples += 1
             loss_running_avg += (curr_loss - loss_running_avg) / n_samples
 
@@ -156,6 +158,7 @@ def train(batch, model, criterion, optimizer):
     
     optimizer.zero_grad()
     model_output, model_output_actual_lengths = model(input_tensor, input_widths)
+    
     #print('model model_output', model_output)
     #print('model model_output_actual_lengths', model_output_actual_lengths)
     #print('target widths', target_widths)
@@ -165,10 +168,13 @@ def train(batch, model, criterion, optimizer):
     #log_probs = model_output.log_softmax(2).detach().requires_grad_()
     #print('log probs', log_probs)
 
-    loss = criterion(model_output, target, model_output_actual_lengths, target_widths)
+    ''' CTC CHANGE '''
+    #loss = criterion(model_output, target, model_output_actual_lengths, target_widths)
+    log_probs = torch.nn.functional.log_softmax(model_output.view(-1, model_output.size(2)), dim=1).view(model_output.size(0), model_output.size(1),-1)    
+    loss = criterion(log_probs, target, model_output_actual_lengths, target_widths)
+    
     #print(loss.size())
     #print(loss)
-    #loss = criterion(log_probs, target, model_output_actual_lengths, target_widths)
     
     loss.backward()
     
@@ -182,8 +188,10 @@ def train(batch, model, criterion, optimizer):
     # Okay, now we're ready to update parameters!
     optimizer.step()
     #print(loss, loss.item())
-    return loss.data[0].item()
-    #return loss.item() 
+    
+    ''' CTC CHANGE '''
+    #return loss.data[0].item()
+    return loss.item() 
 
 
 def parse_arguments(argv):
@@ -490,12 +498,9 @@ def main(args):
     # Set training mode on all sub-modules
     model.train()
 
-    ctc_loss = CTCLoss().cuda()
-    #ctc_loss = nn.CTCLoss().cuda()
-    #print('...Using native CTCLoss with elementwise_mean')
-    #ctc_loss = nn.CTCLoss(reduction='elementwise_mean').cuda()
-    #print('...Using native CTCLoss with none')
-    #ctc_loss = nn.CTCLoss(reduction='sum').cuda()
+    ''' CTC CHANGE '''
+    #ctc_loss = CTCLoss().cuda()
+    ctc_loss = nn.CTCLoss(reduction='mean').cuda()
     #ctc_loss = nn.CTCLoss().cuda()
     
     iteration = 0

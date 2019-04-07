@@ -407,6 +407,7 @@ class AddRandomStripe(object):
 
 class ConvertGray(object):
     def __call__(self, img):
+        #print('...shape', img.shape, img.shape[2])
         if len(img.shape) == 3 and img.shape[2] == 3:
             return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         else:

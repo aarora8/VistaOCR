@@ -14,19 +14,18 @@ with open(input_file, 'r') as fh:
         utt_utf8 = ''
         for word in utt.split(" "):
             if word == "u0020":
-                utt_utf8 += " "
+                utt_utf8 += "<sp> "
             elif word == "u0009":
-                utt_utf8 += " "
+                utt_utf8 += "<tb> "
             else:
                 word_utf8 = ''
                 for char in word.split("_"):
                     char_utf8 = textutils.uxxxx_to_utf8(char)
                     word_utf8 += char_utf8
 
-                utt_utf8 += word_utf8
+                utt_utf8 += word_utf8 + " "
 
         uttid = line[ lparen_location+1 : rparen_location ]
-        uttid = uttid[ :uttid.rfind('_') ]
 
         print("%s (%s)" % (utt_utf8, uttid))
 

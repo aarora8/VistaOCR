@@ -14,6 +14,7 @@ class ImageAug(object):
     
     
     def __init__(self):
+        print('...ImageAug v1')
         # Sometimes(0.5, ...) applies the given augmenter in 50% of all cases,
         # e.g. Sometimes(0.5, GaussianBlur(0.3)) would blur roughly every second image.
         sometimes = lambda aug: iaa.Sometimes(.90, aug)
@@ -82,4 +83,3 @@ class ImageAug(object):
         images_aug = self.seq.augment_image(img)
         return images_aug
     
-

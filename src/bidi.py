@@ -72,8 +72,7 @@ X2_X5_MAPPINGS = {
 
 # Added 'B' so X6 won't execute in that case and X8 will run it's course
 X6_IGNORED = list(X2_X5_MAPPINGS.keys()) + ['BN', 'PDF', 'B']
-#X9_REMOVED = list(X2_X5_MAPPINGS.keys()) + ['BN', 'PDF']
-X9_REMOVED = list(X2_X5_MAPPINGS.keys()) + ['PDF']
+X9_REMOVED = list(X2_X5_MAPPINGS.keys()) + ['BN', 'PDF']
 
 
 def undo_bidi(uxxxx_str, base_level=1):

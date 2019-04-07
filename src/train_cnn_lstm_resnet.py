@@ -23,18 +23,20 @@ import shutil
 from ocr_dataset import OcrDataset
 from ocr_dataset_union import OcrDatasetUnion
 from datautils import GroupedSampler, SortByWidthCollater
-from models.cnnlstm import CnnOcrModel
+#from models.cnnlstm import CnnOcrModel
+from models.cnnlstm_resnet import CnnOcrModel
 from textutils import *
 import argparse
 import augment
-# import augment_v2
-# import augment_v3
-# import augment_v4
 import cv2
+#from torchsummary import summary
+from torch.utils.data import Dataset
 
 from lr_scheduler import ReduceLROnPlateau
+from torch.autograd import Variable
 
 from collections import OrderedDict
+
 
 def test_on_val(val_dataloader, model, criterion):
     start_val = time.time()
@@ -113,6 +115,7 @@ def test_on_val(val_dataloader, model, criterion):
     logger.info("Total val time: %s for %d images" % (end_val - start_val, total_val_images))
     return loss_running_avg, cer_running_avg, wer_running_avg
 
+
 def test_on_val_writeout(val_dataloader, model, out_hyp_path):
     start_val = time.time()
 
@@ -148,28 +151,14 @@ def train(batch, model, criterion, optimizer):
     input_tensor, target, input_widths, target_widths, metadata = batch
     input_tensor = input_tensor.cuda(async=True)
 
-    #print('train input_tensor ', input_tensor.size())
-    #print('train target ', target.size(), target)
-    #print('train input_widths ', input_widths.size(), input_widths)
-    #print('train target_widths ', target_widths.size(), target_widths)
-    #print('train metadata ', metadata)
-    
     optimizer.zero_grad()
     model_output, model_output_actual_lengths = model(input_tensor, input_widths)
-    #print('model model_output', model_output)
-    #print('model model_output_actual_lengths', model_output_actual_lengths)
-    #print('target widths', target_widths)
-    
-    #print('')
+
     #probs = torch.nn.functional.log_softmax(model_output.view(-1, model_output.size(2)), dim=1).view(model_output.size(0), model_output.size(1),-1)
-    #log_probs = model_output.log_softmax(2).detach().requires_grad_()
-    #print('log probs', log_probs)
+    #probs = model_output.log_softmax(2).detach().requires_grad_()
 
     loss = criterion(model_output, target, model_output_actual_lengths, target_widths)
-    #print(loss.size())
-    #print(loss)
-    #loss = criterion(log_probs, target, model_output_actual_lengths, target_widths)
-    
+    #loss = criterion(probs, target, model_output_actual_lengths, target_widths)
     loss.backward()
     
     # RNN Backprop can have exploding gradients (even with LSTM), so make sure
@@ -182,12 +171,13 @@ def train(batch, model, criterion, optimizer):
     # Okay, now we're ready to update parameters!
     optimizer.step()
     #print(loss, loss.item())
-    return loss.data[0].item()
-    #return loss.item() 
+    return loss.data[0].item() #loss.item() 
 
 
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
+    
+    #parser = argparse.ArgumentParser(description="OCR Training Script")
     
     parser.add_argument("--batch-size", type=int, default=64, help="SGD mini-batch size")
     parser.add_argument("--max_allowed_width", type=int, default=1400, help="Max allowed width")
@@ -204,10 +194,13 @@ def parse_arguments(argv):
     parser.add_argument("--test-datadir", type=str, default=None, help="optionally produce hyps on test set every validation pass; this is data dir")
     parser.add_argument("--test-outdir", type=str, default=None, help="optionally produce hyps on test set every validation pass; this is output dir to place hyps")
     
-    parser.add_argument("--snapshot-prefix", type=str, required=True, help="Output directory and basename prefix for output model snapshots")
-    parser.add_argument("--load-from-snapshot", type=str, help="Path to snapshot from which we should initialize model weights")
+    parser.add_argument("--snapshot-prefix", type=str, required=True,
+                        help="Output directory and basename prefix for output model snapshots")
+    parser.add_argument("--load-from-snapshot", type=str,
+                        help="Path to snapshot from which we should initialize model weights")
     parser.add_argument("--num-lstm-layers", type=int, required=True, help="Number of LSTM layers in model")
-    parser.add_argument("--num-lstm-units", type=int, required=True, help="Number of LSTM hidden units in each LSTM layer (single number, or comma seperated list)")
+    parser.add_argument("--num-lstm-units", type=int, required=True,
+                        help="Number of LSTM hidden units in each LSTM layer (single number, or comma seperated list)")
     parser.add_argument("--lstm-input-dim", type=int, required=True, help="Input dimension for LSTM")
     parser.add_argument("--lr", type=float, default=1e-3, help="Initial learning rate")
     parser.add_argument("--nepochs", type=int, default=250, help="Maximum number of epochs to train")
@@ -221,16 +214,37 @@ def parse_arguments(argv):
     parser.add_argument("--max-val-size", type=int, default=-1, help="If validation set is large, limit it to a smaller size for faster validation runs")
     parser.add_argument("--rtl", default=False, action='store_true', help="Set if language is right-to-left")
     parser.add_argument("--synth_input", default=False, action='store_true', help="Specifies if input data is synthetic; if so we apply extra data augmentation")
+    #parser.add_argument("--augment", default=False, action='store_true', help="Add image aug library")
     parser.add_argument("--augment", type=int, default=0, help="Add image aug library")
     parser.add_argument("--write_samples", default=False, action='store_true', help="Write sample images")
     parser.add_argument("--samples_dir", type=str, help="Samples directory")
     parser.add_argument("--cvtGray", default=False, action='store_true', help="Set if need to convert color images to grayscale") 
     
+    #return parser.parse_args()
     args = parser.parse_args(argv)
     for arg in vars(args):
         print(arg, getattr(args, arg))
     
     return args
+
+# class TestDataset(Dataset):
+#     def __getitem__(self, index):
+#         print('index %d' % (index))
+#         transcription = ['123']
+#         line_image_padded = torch.zeros(3, 30, 144)
+#         metadata = {
+#             'utt-id': '1',
+#             'width': 144
+#         }
+#         
+#         #if index > 1:
+#         #    return None, None, None
+#         
+#         return line_image_padded, transcription, metadata
+#     
+#     def __len__(self):
+#         return 1
+
 
 def summary(model, input_size, batch_size=-1, device="cuda"):
 
@@ -339,10 +353,9 @@ def summary(model, input_size, batch_size=-1, device="cuda"):
     print("Estimated Total Size (MB): %0.2f" % total_size)
     print("----------------------------------------------------------------")
     # return summary
-
+            
 def main(args):
     logger.info("Starting training\n\n")
-    logger.info(torch.__version__)
     sys.stdout.flush()
     #args = get_args()
     #for arg in args:
@@ -415,10 +428,12 @@ def main(args):
 #         validation_dataset = OcrDatasetUnion(args.datadir, args.validdirtype, line_img_transforms)
     if len(args.datadir) == 1:
         train_dataset = OcrDataset(args.datadir[0], args.datadirtype, line_img_transforms, max_allowed_width=args.max_allowed_width)
-        validation_dataset = OcrDataset(args.validdir[0], args.validdirtype, line_img_transforms, max_allowed_width=args.max_allowed_width)
+        validation_dataset = OcrDataset(args.datadir[0], args.validdirtype, line_img_transforms, max_allowed_width=args.max_allowed_width)
     else:
         train_dataset = OcrDatasetUnion(args.datadir, args.datadirtype , line_img_transforms, max_allowed_width=args.max_allowed_width)
-        validation_dataset = OcrDatasetUnion(args.validdir, args.validdirtype, line_img_transforms, max_allowed_width=args.max_allowed_width)
+        validation_dataset = OcrDatasetUnion(args.datadir, args.validdirtype, line_img_transforms, max_allowed_width=args.max_allowed_width)
+
+
 
 
     if args.test_datadir is not None:
@@ -435,7 +450,7 @@ def main(args):
 
     n_epochs = args.nepochs
     lr_alpha = args.lr
-    snapshot_every_n_iterations = args.snapshot_num_iterations
+    snapshot_every_n_iterations = args.snapshot_num_iterations  
     test_every_n_iterations = args.test_num_iterations
     print('...validation and snapshot iter %d' % (snapshot_every_n_iterations))
     print('...test set iter %d' % (test_every_n_iterations))
@@ -466,52 +481,71 @@ def main(args):
             alphabet=train_dataset.alphabet,
             multigpu=True)
 
-    summary(model,input_size=(3, 30, 135),batch_size=32)
+    summary(model,input_size=(3, 30, 580),batch_size=1)
 
     # Setting dataloader after we have a chnae to (maybe!) over-ride the dataset alphabet from a pre-trained model
     train_dataloader = DataLoader(train_dataset, args.batch_size, num_workers=8, sampler=GroupedSampler(train_dataset, rand=True),
                                   collate_fn=SortByWidthCollater, pin_memory=True, drop_last=True)
-
+ 
     if args.max_val_size > 0:
         validation_dataloader = DataLoader(validation_dataset, args.batch_size, num_workers=0,sampler=GroupedSampler(validation_dataset, max_items=args.max_val_size, fixed_rand=True),
                                            collate_fn=SortByWidthCollater, pin_memory=False, drop_last=False)
     else:
         validation_dataloader = DataLoader(validation_dataset, args.batch_size, num_workers=0,sampler=GroupedSampler(validation_dataset, rand=False),
                                            collate_fn=SortByWidthCollater, pin_memory=False, drop_last=False)
-
-
-
+ 
+ 
+ 
     if args.test_datadir is not None:
         test_dataloader = DataLoader(test_dataset, args.batch_size, num_workers=0,sampler=GroupedSampler(test_dataset, rand=False),
                                      collate_fn=SortByWidthCollater, pin_memory=False, drop_last=False)
-
-
-
+ 
+ 
+ 
+ 
+ 
     # Set training mode on all sub-modules
     model.train()
-
+ 
     ctc_loss = CTCLoss().cuda()
     #ctc_loss = nn.CTCLoss().cuda()
     #print('...Using native CTCLoss with elementwise_mean')
     #ctc_loss = nn.CTCLoss(reduction='elementwise_mean').cuda()
     #print('...Using native CTCLoss with none')
-    #ctc_loss = nn.CTCLoss(reduction='sum').cuda()
-    #ctc_loss = nn.CTCLoss().cuda()
-    
+    #ctc_loss = nn.CTCLoss(reduction='none').cuda()
+     
     iteration = 0
     best_val_wer = float('inf')
-
+ 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr_alpha, weight_decay=args.weight_decay)
-
+ 
     scheduler = ReduceLROnPlateau(optimizer, mode='min', patience=args.patience, min_lr=args.min_lr)
     wer_array = []
     cer_array = []
     loss_array = []
     lr_points = []
     iteration_points = []
-
+ 
     epoch_size = len(train_dataloader)
-
+ 
+ 
+    #summary_widths = Object()
+    #summary_widths.data = [144]
+    #summary_dataset = TestDataset()
+    #summary_loader = DataLoader(train_dataset,args.batch_size)
+    #summary(model, (3, 30, 144))
+    #for idx, (input_tensor, target, input_widths, target_widths, metadata) in enumerate(train_dataloader):
+#     for batch in train_dataloader:
+#         input_tensor, target, input_widths, target_widths, metadata = batch
+#         # Wrap inputs in PyTorch Variable class
+#         #input_tensor = input_tensor.cuda(async=True)
+#         print('......begin summary forward .....')
+ 
+#         print('......DONE summary forward .....')        
+#         break
+ 
+ 
+ 
     print('\n__Python VERSION:', sys.version)
     print('__PyTorch VERSION:', torch.__version__)
     print('__CUDNN VERSION:', torch.backends.cudnn.version())
@@ -520,17 +554,17 @@ def main(args):
     print('__Available devices ', torch.cuda.device_count())
     print('__Current cuda device ', torch.cuda.current_device())
     print('__CUDA_VISIBLE_DEVICES %s \n' % str(os.environ["CUDA_VISIBLE_DEVICES"]))
-    
+     
     do_test_write = True
     for epoch in range(1, n_epochs + 1):
         epoch_start = datetime.datetime.now()
-
+ 
         # First modify main OCR model
         for batch in train_dataloader:
             sys.stdout.flush()
             iteration += 1
             iteration_start = time.time()
-
+ 
             if iteration == 1 or iteration % snapshot_every_n_iterations == 0:
                 print('...write samples')
                 input_tensor, target, input_widths, target_widths, metadata = batch
@@ -542,15 +576,19 @@ def main(args):
                         cv2.imwrite(args.samples_dir + '/' + str(iteration) + '_' + str(img_ctr) + ".png", img)
                     else:
                         break
-            
+             
+                #if iteration == 1:
+                #    input_tensor = input_tensor.cuda(async=True)
+                #    summary(model, [input_tensor, input_widths])
+                     
             loss = train(batch, model, ctc_loss, optimizer)
-
+ 
             #elapsed_time = datetime.datetime.now() - iteration_start
             duration = time.time() - iteration_start
             loss = loss / args.batch_size
-
+ 
             #loss_array.append(loss)
-
+ 
             if iteration % 10 == 0:
                 input_tensor, target, input_widths, target_widths, metadata = batch
                 #print(input_widths, target_widths, target)
@@ -558,20 +596,20 @@ def main(args):
                 sec_per_batch = float(duration)
                 logger.info("Iteration: %d (%d/%d in epoch %d), Batch Size: %d, Max Width: %d, Loss: %f, LR: %f, ex/sec: %.1f, sec/batch: %.2f" % (
                     iteration, iteration % epoch_size, epoch_size, epoch, args.batch_size, input_widths[0], loss, lr_alpha, examples_per_sec, sec_per_batch))
-
+ 
             # Do something with loss, running average, plot to some backend server, etc
-
+ 
             #if iteration == 1 or iteration % snapshot_every_n_iterations == 0:
             if iteration % snapshot_every_n_iterations == 0:
                 logger.info("Testing on validation set")
                 val_loss, val_cer, val_wer = test_on_val(validation_dataloader, model, ctc_loss)
-
+ 
                 if val_cer < 0.5:
                     do_test_write = True
-                
+                 
                 if iteration % test_every_n_iterations == 0:
                     print('...Time for test eval %d' % (iteration))
-                                     
+                                      
                 if args.test_datadir is not None and (iteration % test_every_n_iterations == 0) and do_test_write:
                     print('......start test eval')
                     out_hyp_outdomain_file = os.path.join(args.test_outdir, "hyp-%07d.outdomain.utf8" % iteration)
@@ -581,7 +619,7 @@ def main(args):
                     test_on_val_writeout(validation_dataloader, model, out_hyp_indomain_file)
                     with open(out_meta_file, 'w') as fh_out:
                         fh_out.write("%d,%f,%f,%f\n" % (iteration, val_cer, val_wer, val_loss))
-                
+                 
                 # Reduce learning rate on plateau
                 early_exit = False
                 lowered_lr = False
@@ -590,12 +628,12 @@ def main(args):
                     lr_points.append(iteration / snapshot_every_n_iterations)
                     if scheduler.finished:
                         early_exit = True
-
+ 
                     # for bookeeping only
                     lr_alpha = max(lr_alpha * scheduler.factor, scheduler.min_lr)
-
+ 
                 logger.info("Val Loss: %f\tNo LM Val CER: %f\tNo LM Val WER: %f" % (val_loss, val_cer, val_wer))
-
+ 
                 torch.save({'iteration': iteration,
                             'state_dict': model.state_dict(),
                             'optimizer': optimizer.state_dict(),
@@ -605,30 +643,30 @@ def main(args):
                             'line_height': args.line_height
                         },
                            snapshot_path)
-
+ 
                 # plotting lr_change on wer, cer and loss.
                 wer_array.append(val_wer)
                 cer_array.append(val_cer)
                 iteration_points.append(iteration / snapshot_every_n_iterations)
-
+ 
                 if val_wer < best_val_wer:
                     logger.info("Best model so far, copying snapshot to best model file")
                     best_val_wer = val_wer
                     shutil.copyfile(snapshot_path, best_model_path)
-
+ 
                 logger.info("Running WER: %s" % str(wer_array))
                 logger.info("Done with validation, moving on.")
-
+ 
                 if early_exit:
                     logger.info("Early exit")
                     sys.exit(0)
-
+ 
                 if lowered_lr:
                     logger.info("Switching to best model parameters before continuing with lower LR")
                     weights = torch.load(best_model_path)
                     model.load_state_dict(weights['state_dict'])
-
-
+ 
+ 
         elapsed_time = datetime.datetime.now() - epoch_start
         logger.info("\n------------------")
         logger.info("Done with epoch, elapsed time = %s" % pretty_print_timespan(elapsed_time))
