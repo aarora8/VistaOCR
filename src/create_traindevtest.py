@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import os
 import numpy as np
 import cv2
@@ -11,9 +13,9 @@ sys.path.append("./src")
 import textutils
 
 
-gt_basedir = '/exp/scale18/ocr/data/derived/synth/yomdle/russian/truth_csv'
-image_basedir = '/exp/scale18/ocr/data/derived/synth/yomdle/russian/truth_line_image/'
-output_dir = '/exp/scale18/ocr/data/derived/synth/yomdle/russian'
+gt_basedir = '/export/b04/aarora8/aavista2/src/data/download/russian/truth_csv'
+image_basedir = '/export/b04/aarora8/aavista2/src/data/download/russian/truth_line_image/'
+output_dir = '/export/b04/aarora8/aavista2/src/data/local/'
 
 
 def main():
