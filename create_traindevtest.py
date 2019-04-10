@@ -13,9 +13,9 @@ sys.path.append("./src")
 import textutils
 
 
-gt_basedir = '/export/b04/aarora8/aavista2/src/data/download/russian/truth_csv'
-image_basedir = '/export/b04/aarora8/aavista2/src/data/download/russian/truth_line_image/'
-output_dir = '/export/b04/aarora8/aavista2/src/data/local/'
+gt_basedir = '/export/b04/aarora8/aavista2/data/download/russian/truth_csv'
+image_basedir = '/export/b04/aarora8/aavista2/data/download/russian/truth_line_image/'
+output_dir = '/export/b04/aarora8/aavista2/data/lmdb/'
 
 
 def main():
