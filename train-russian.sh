@@ -25,4 +25,4 @@ $cmd --gpu 1 --mem 8G data/log/train.log limit_num_gpus.sh python3 src/train_cnn
         --samples_dir=data/samples \
         --nepochs=250
 
-$cmd --gpu 1 --mem 8G local/test.log limit_num_gpus.sh src/decode_testset.sh data/output data/model/russian-best_model.pth data/lmdb
+#$cmd --gpu 1 --mem 8G data/log/test.log limit_num_gpus.sh src/decode_testset.sh data/output data/model/russian-best_model.pth data/lmdb
